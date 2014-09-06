@@ -5,13 +5,13 @@ namespace Oro\Bundle\EntityBundle\Tests\Unit\Grid;
 use Oro\Bundle\DataGridBundle\Datagrid\Common\DatagridConfiguration;
 use Oro\Bundle\DataGridBundle\Datasource\Orm\OrmDatasource;
 use Oro\Bundle\DataGridBundle\Tests\Unit\Datagrid\DatagridGuesserMock;
-use Oro\Bundle\EntityBundle\Grid\DynamicFieldsExtension;
+use Oro\Bundle\EntityBundle\Grid\AdditionalFieldsExtension;
 use Oro\Bundle\EntityConfigBundle\Config\Config;
 use Oro\Bundle\EntityConfigBundle\Config\Id\FieldConfigId;
 use Oro\Bundle\EntityExtendBundle\EntityConfig\ExtendScope;
 use Oro\Bundle\EntityExtendBundle\Tools\ExtendHelper;
 
-class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
+class AdditionalFieldsExtensionTest extends \PHPUnit_Framework_TestCase
 {
     const ENTITY_CLASS = 'Test\Entity';
     const ENTITY_NAME  = 'Test:Entity';
@@ -29,10 +29,7 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
     /** @var \PHPUnit_Framework_MockObject_MockObject */
     protected $extendConfigProvider;
 
-    /** @var \PHPUnit_Framework_MockObject_MockObject */
-    protected $datagridConfigProvider;
-
-    /** @var DynamicFieldsExtension */
+    /** @var AdditionalFieldsExtension */
     protected $extension;
 
     protected function setUp()
@@ -44,9 +41,8 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
             ->disableOriginalConstructor()
             ->getMock();
 
-        $this->entityConfigProvider   = $this->getConfigProviderMock();
-        $this->extendConfigProvider   = $this->getConfigProviderMock();
-        $this->datagridConfigProvider = $this->getConfigProviderMock();
+        $this->entityConfigProvider = $this->getConfigProviderMock();
+        $this->extendConfigProvider = $this->getConfigProviderMock();
 
         $this->configManager->expects($this->any())
             ->method('getProvider')
@@ -55,12 +51,11 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
                     [
                         ['entity', $this->entityConfigProvider],
                         ['extend', $this->extendConfigProvider],
-                        ['datagrid', $this->datagridConfigProvider],
                     ]
                 )
             );
 
-        $this->extension = new DynamicFieldsExtension(
+        $this->extension = new AdditionalFieldsExtension(
             $this->configManager,
             $this->entityClassResolver,
             new DatagridGuesserMock()
@@ -84,8 +79,11 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
             $this->extension->isApplicable(
                 DatagridConfiguration::create(
                     [
-                        'extended_entity_name' => 'entity',
-                        'source'               => [
+                        'options' => [
+                            'entity_name'       => self::ENTITY_NAME,
+                            'additional_fields' => [self::FIELD_NAME]
+                        ],
+                        'source'  => [
                             'type' => 'orm'
                         ]
                     ]
@@ -96,7 +94,39 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
             $this->extension->isApplicable(
                 DatagridConfiguration::create(
                     [
-                        'extended_entity_name' => 'entity'
+                        'options' => [
+                            'entity_name'       => self::ENTITY_NAME,
+                            'additional_fields' => []
+                        ],
+                        'source'  => [
+                            'type' => 'orm'
+                        ]
+                    ]
+                )
+            )
+        );
+        $this->assertFalse(
+            $this->extension->isApplicable(
+                DatagridConfiguration::create(
+                    [
+                        'options' => [
+                            'entity_name' => self::ENTITY_NAME,
+                        ],
+                        'source'  => [
+                            'type' => 'orm'
+                        ]
+                    ]
+                )
+            )
+        );
+        $this->assertFalse(
+            $this->extension->isApplicable(
+                DatagridConfiguration::create(
+                    [
+                        'options' => [
+                            'entity_name'       => self::ENTITY_NAME,
+                            'additional_fields' => [self::FIELD_NAME]
+                        ],
                     ]
                 )
             )
@@ -129,97 +159,27 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
             ->with(self::ENTITY_CLASS, self::FIELD_NAME)
             ->will($this->returnValue($entityFieldConfig));
 
-        $datagridFieldConfig = new Config(
-            new FieldConfigId('datagrid', self::ENTITY_CLASS, self::FIELD_NAME, $fieldType)
-        );
-        $this->datagridConfigProvider->expects($this->once())
-            ->method('getConfig')
-            ->with(self::ENTITY_CLASS, self::FIELD_NAME)
-            ->will($this->returnValue($datagridFieldConfig));
-
-        $config = $this->getDatagridConfiguration();
+        $config        = $this->getDatagridConfiguration();
         $initialConfig = $config->toArray();
         $this->extension->processConfigs($config);
         $this->assertEquals(
             array_merge(
                 $initialConfig,
                 [
-                    'columns'              => [
+                    'columns' => [
                         self::FIELD_NAME => [
                             'label'         => $fieldLabel,
                             'frontend_type' => 'string'
                         ]
                     ],
-                    'sorters'              => [
+                    'sorters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => self::FIELD_NAME
                             ]
                         ]
                     ],
-                    'filters'              => [
-                        'columns' => [
-                            self::FIELD_NAME => [
-                                'type'      => 'string',
-                                'data_name' => self::FIELD_NAME,
-                                'enabled'   => false
-                            ]
-                        ]
-                    ],
-                ]
-            ),
-            $config->toArray()
-        );
-    }
-
-    public function testProcessConfigsWithVisibleFilter()
-    {
-        $fieldLabel = 'test.field.label';
-        $fieldType  = 'string';
-
-        $this->entityClassResolver->expects($this->once())
-            ->method('getEntityClass')
-            ->with(self::ENTITY_NAME)
-            ->will($this->returnValue(self::ENTITY_CLASS));
-        $this->setExpectationForGetFields(self::ENTITY_CLASS, self::FIELD_NAME, $fieldType);
-
-        $entityFieldConfig = new Config(new FieldConfigId('entity', self::ENTITY_CLASS, self::FIELD_NAME, $fieldType));
-        $entityFieldConfig->set('label', $fieldLabel);
-        $this->entityConfigProvider->expects($this->once())
-            ->method('getConfig')
-            ->with(self::ENTITY_CLASS, self::FIELD_NAME)
-            ->will($this->returnValue($entityFieldConfig));
-
-        $datagridFieldConfig = new Config(
-            new FieldConfigId('datagrid', self::ENTITY_CLASS, self::FIELD_NAME, $fieldType)
-        );
-        $datagridFieldConfig->set('show_filter', true);
-        $this->datagridConfigProvider->expects($this->once())
-            ->method('getConfig')
-            ->with(self::ENTITY_CLASS, self::FIELD_NAME)
-            ->will($this->returnValue($datagridFieldConfig));
-
-        $config = $this->getDatagridConfiguration();
-        $initialConfig = $config->toArray();
-        $this->extension->processConfigs($config);
-        $this->assertEquals(
-            array_merge(
-                $initialConfig,
-                [
-                    'columns'              => [
-                        self::FIELD_NAME => [
-                            'label'         => $fieldLabel,
-                            'frontend_type' => 'string'
-                        ]
-                    ],
-                    'sorters'              => [
-                        'columns' => [
-                            self::FIELD_NAME => [
-                                'data_name' => self::FIELD_NAME
-                            ]
-                        ]
-                    ],
-                    'filters'              => [
+                    'filters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'type'      => 'string',
@@ -289,8 +249,8 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
 
     public function testVisitDatasource()
     {
-        $fieldType  = 'string';
-        $alias      = 'c';
+        $fieldType = 'string';
+        $alias     = 'c';
 
         $em = $this->getMockBuilder('Doctrine\ORM\EntityManager')
             ->disableOriginalConstructor()
@@ -327,26 +287,26 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
         $datasource = new OrmDatasource($em, $this->getEventDispatcherMock());
         $datasource->setQueryBuilder($qb);
 
-        $config = $this->getDatagridConfiguration();
+        $config        = $this->getDatagridConfiguration();
         $initialConfig = $config->toArray();
         $this->extension->visitDatasource($config, $datasource);
         $this->assertEquals(
             array_merge(
                 $initialConfig,
                 [
-                    'columns'              => [
+                    'columns' => [
                         self::FIELD_NAME => [
                             'data_name' => self::FIELD_NAME
                         ]
                     ],
-                    'sorters'              => [
+                    'sorters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $alias . '.' . self::FIELD_NAME
                             ]
                         ]
                     ],
-                    'filters'              => [
+                    'filters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $alias . '.' . self::FIELD_NAME
@@ -361,8 +321,8 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
 
     public function testVisitDatasourceForEnum()
     {
-        $fieldType  = 'enum';
-        $alias      = 'c';
+        $fieldType = 'enum';
+        $alias     = 'c';
 
         $targetFieldName = 'testRel';
         $relAlias        = 'auto_rel_1';
@@ -375,14 +335,14 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
             ->method('getEntityClass')
             ->with(self::ENTITY_NAME)
             ->will($this->returnValue(self::ENTITY_CLASS));
-        $this->setExpectationForGetFields(self::ENTITY_CLASS, self::FIELD_NAME, $fieldType);
-
-        $extendFieldConfig = new Config(new FieldConfigId('extend', self::ENTITY_CLASS, self::FIELD_NAME, $fieldType));
-        $extendFieldConfig->set('target_field', $targetFieldName);
-        $this->extendConfigProvider->expects($this->once())
-            ->method('getConfig')
-            ->with(self::ENTITY_CLASS, self::FIELD_NAME)
-            ->will($this->returnValue($extendFieldConfig));
+        $this->setExpectationForGetFields(
+            self::ENTITY_CLASS,
+            self::FIELD_NAME,
+            $fieldType,
+            [
+                'target_field' => $targetFieldName
+            ]
+        );
 
         $from = $this->getMockBuilder('Doctrine\ORM\Query\Expr\From')
             ->disableOriginalConstructor()
@@ -413,26 +373,26 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
         $datasource = new OrmDatasource($em, $this->getEventDispatcherMock());
         $datasource->setQueryBuilder($qb);
 
-        $config = $this->getDatagridConfiguration();
+        $config        = $this->getDatagridConfiguration();
         $initialConfig = $config->toArray();
         $this->extension->visitDatasource($config, $datasource);
         $this->assertEquals(
             array_merge(
                 $initialConfig,
                 [
-                    'columns'              => [
+                    'columns' => [
                         self::FIELD_NAME => [
                             'data_name' => self::FIELD_NAME
                         ]
                     ],
-                    'sorters'              => [
+                    'sorters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $relAlias . '.' . $targetFieldName
                             ]
                         ]
                     ],
-                    'filters'              => [
+                    'filters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $alias . '.' . self::FIELD_NAME
@@ -447,8 +407,8 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
 
     public function testVisitDatasourceForMultiEnum()
     {
-        $fieldType  = 'multiEnum';
-        $alias      = 'c';
+        $fieldType = 'multiEnum';
+        $alias     = 'c';
 
         $snapshotFieldName = ExtendHelper::getMultipleEnumSnapshotFieldName(self::FIELD_NAME);
 
@@ -487,26 +447,26 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
         $datasource = new OrmDatasource($em, $this->getEventDispatcherMock());
         $datasource->setQueryBuilder($qb);
 
-        $config = $this->getDatagridConfiguration();
+        $config        = $this->getDatagridConfiguration();
         $initialConfig = $config->toArray();
         $this->extension->visitDatasource($config, $datasource);
         $this->assertEquals(
             array_merge(
                 $initialConfig,
                 [
-                    'columns'              => [
+                    'columns' => [
                         self::FIELD_NAME => [
                             'data_name' => $snapshotFieldName
                         ]
                     ],
-                    'sorters'              => [
+                    'sorters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $alias . '.' . $snapshotFieldName
                             ]
                         ]
                     ],
-                    'filters'              => [
+                    'filters' => [
                         'columns' => [
                             self::FIELD_NAME => [
                                 'data_name' => $alias . '.' . self::FIELD_NAME
@@ -521,38 +481,39 @@ class DynamicFieldsExtensionTest extends \PHPUnit_Framework_TestCase
 
     protected function getDatagridConfiguration()
     {
-        return DatagridConfiguration::create(['extended_entity_name' => self::ENTITY_NAME]);
+        return DatagridConfiguration::create(
+            [
+                'options' => [
+                    'entity_name'       => self::ENTITY_NAME,
+                    'additional_fields' => [self::FIELD_NAME]
+                ]
+            ]
+        );
     }
 
-    protected function setExpectationForGetFields($className, $fieldName, $fieldType)
+    protected function setExpectationForGetFields($className, $fieldName, $fieldType, array $extendFieldConfig = [])
     {
-        $fieldId = new FieldConfigId('entity', $className, $fieldName, $fieldType);
-
         $extendConfig = new Config(new FieldConfigId('extend', $className, $fieldName, $fieldType));
-        $extendConfig->set('owner', ExtendScope::OWNER_CUSTOM);
         $extendConfig->set('state', ExtendScope::STATE_ACTIVE);
         $extendConfig->set('is_deleted', false);
-
-        $datagridConfig = new Config(new FieldConfigId('datagrid', $className, $fieldName, $fieldType));
-        $datagridConfig->set('is_visible', true);
+        foreach ($extendFieldConfig as $key => $val) {
+            $extendConfig->set($key, $val);
+        }
 
         $this->configManager->expects($this->once())
             ->method('hasConfig')
             ->with($className)
             ->will($this->returnValue(true));
 
-        $this->entityConfigProvider->expects($this->once())
-            ->method('getIds')
-            ->with($className)
-            ->will($this->returnValue([$fieldId]));
         $this->extendConfigProvider->expects($this->once())
-            ->method('getConfigById')
-            ->with($this->identicalTo($fieldId))
+            ->method('hasConfig')
+            ->with($className, $fieldName)
+            ->will($this->returnValue(true));
+
+        $this->extendConfigProvider->expects($this->any())
+            ->method('getConfig')
+            ->with($className, $fieldName)
             ->will($this->returnValue($extendConfig));
-        $this->datagridConfigProvider->expects($this->once())
-            ->method('getConfigById')
-            ->with($this->identicalTo($fieldId))
-            ->will($this->returnValue($datagridConfig));
     }
 
     /**
