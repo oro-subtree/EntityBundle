@@ -6,17 +6,17 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
 
-class EntityAliasProviderPass implements CompilerPassInterface
+class EntityClassNameProviderPass implements CompilerPassInterface
 {
-    const RESOLVER_SERVICE = 'oro_entity.entity_alias_resolver';
-    const PROVIDER_TAG_NAME = 'oro_entity.alias_provider';
+    const CHAIN_SERVICE = 'oro_entity.entity_class_name_provider';
+    const PROVIDER_TAG_NAME = 'oro_entity.class_name_provider';
 
     /**
      * {@inheritdoc}
      */
     public function process(ContainerBuilder $container)
     {
-        if (!$container->hasDefinition(self::RESOLVER_SERVICE)) {
+        if (!$container->hasDefinition(self::CHAIN_SERVICE)) {
             return;
         }
 
@@ -36,7 +36,7 @@ class EntityAliasProviderPass implements CompilerPassInterface
         $providers = call_user_func_array('array_merge', $providers);
 
         // register
-        $resolverDef = $container->getDefinition(self::RESOLVER_SERVICE);
+        $resolverDef = $container->getDefinition(self::CHAIN_SERVICE);
         foreach ($providers as $provider) {
             $resolverDef->addMethodCall('addProvider', [$provider]);
         }
