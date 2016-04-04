@@ -141,7 +141,8 @@ class ConfigExclusionProvider implements ExclusionProviderInterface
 
         return in_array(
             $className,
-            $this->entityHierarchyProvider->getHierarchyForClassName($entityClassName)
+            $this->entityHierarchyProvider->getHierarchyForClassName($entityClassName),
+            true
         );
     }
 }
