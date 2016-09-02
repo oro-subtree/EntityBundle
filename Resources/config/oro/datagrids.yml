@@ -1,4 +1,4 @@
-datagrid:
+datagrids:
     custom-entity-grid:
         acl_resource: ~
         options:
